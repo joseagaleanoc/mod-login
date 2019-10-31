@@ -1,0 +1,98 @@
+:root {
+    --menuMargin: 10%;
+    --width: 90%;
+    --marginSides: 5%;
+    --mainColor: #05395B;
+}
+* {
+    border: none;
+    font-size: 12pt;
+    margin: 0;
+    padding: 0;
+    overflow: initial;
+}
+h1 {
+    color: var(--mainColor);
+    font-size: 20pt;
+}
+header {
+    background-color: #FFF;
+    border-bottom: 1px solid #b7b7b7;
+    padding: 5px 1%;
+    width:  98%;
+    z-index: 1000;
+}
+.menu {
+    text-align: right;
+}
+.menu-item {
+    background-color: #A0D9FF;
+    border: 1px solid #FFF;
+    border-radius: 5px;
+    color: var(--mainColor);
+    display: inline-block;
+    padding: 5px 10px;
+    text-decoration: none;
+}
+.container {
+    margin: 0 auto;
+    width: var(--width);
+}
+.form-grp {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 5px 0 10px;
+}
+.form-input {
+    width: 100%;
+}
+.form-input select, .form-input input {
+    border: 1px solid #A3A3A3;
+    border-radius: 5px;
+    color:#333;
+    display: block;
+    height: 30px;
+    margin: 0 auto;
+    padding: 0 5px;
+    width: 97%;
+}
+.two-col {
+    width: 49% !important;
+}
+.btn {
+    cursor: pointer;
+}
+.btn-success {
+    color:#FFF !important;
+    background-color:#28a745 !important;
+    border-color:#28a745 !important;
+    width: max-content !important;
+}
+.text-center {
+    text-align: center;
+}
+.err {
+    background-color: #f8d7da;
+	border-color: #f5c6cb;
+	color: #721c24;
+	padding: 10px 5px;
+	text-align: center;
+}
+.suc {
+	background-color: #d4edda;
+	border-color: #c3e6cb;
+	color: #155724;
+	padding: 10px 5px;
+	text-align: center;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+table td, table th {
+    border: 1px solid #000;
+    padding: 5px;
+}
+.rowhighlight {
+    background-color: #CCC;
+}

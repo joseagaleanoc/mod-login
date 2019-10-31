@@ -1,0 +1,18 @@
+<?php
+
+class mysqliConn {
+    private $mysqli;
+
+    protected function mysqliConn() {
+        $_db['host'] = '';
+        $_db['user'] = '';
+        $_db['pass'] = '';
+        $_db['db'] = '';
+        $_db['charset'] = 'utf8';
+        
+        $this->mysqli = new mysqli($_db['host'], $_db['user'], $_db['pass'], $_db['db']) or $this->log($mysqli->connect_error, true, 'ERROR');
+        $this->mysqli->set_charset($_db['charset']);
+
+        return $this->mysqli;
+    }
+}
