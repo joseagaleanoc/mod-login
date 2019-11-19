@@ -13,8 +13,6 @@
                 <div class="form-input">
                     <input name="email" type="email" class="input" placeholder="Correo electrónico">
                 </div>
-            </div>
-            <div class="form-grp">
                 <div class="form-input">
                     <input name="password" type="password" class="input" placeholder="Contraseña">
                 </div>

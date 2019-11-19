@@ -2,11 +2,13 @@
 session_start();
 
 require('classes/mysqliConn.php');
+require('classes/functions.php');
 
 class main extends mysqliConn {
     private $mysqli;
     private $token;
     private $stringlogin;
+    private $maxLoginAttemps = 5;
 
     public $title = 'Main';
     public $get = array();
@@ -26,6 +28,7 @@ class main extends mysqliConn {
 
         $this->token = $this->generateToken();
         $this->checkToken = $this->checkToken();
+        $this->checkCaptcha = $this->checkCaptcha();
 
         $this->loginCheck = $this->loginCheck();
 
@@ -54,35 +57,33 @@ class main extends mysqliConn {
     
     /* START - Login functions */
     private function loginHandler() {
-        $captcha = isset($this->post['captcha']) ? hash('sha512', $this->mysqli->real_escape_string($this->post['captcha'])) : '';
-
+        $err = '¡Error!';
         if($this->checkToken) {
-            if(hash_equals($_SESSION['captcha'], $captcha)) {
+            if($this->checkCaptcha) {
                 $email = isset($this->post['email']) && filter_var($this->post['email'], FILTER_VALIDATE_EMAIL) ? $this->post['email'] : '';
-                $password = isset($this->post['password']) ? sha1($this->post['password']) : '';
+                $password = SHA1(isset($this->post['password']) ? $this->post['password'] : '');
 
-                if ($stmt = $this->mysqli->prepare('SELECT iduser, fname, lname, clave, rol, estado FROM user WHERE email = ? LIMIT 1')) {
+                if ($stmt = $this->mysqli->prepare('SELECT iduser, fname, lname, passdb, status FROM user WHERE email = ? LIMIT 1')) {
                     $stmt->bind_param('s', $email);
                     $stmt->execute();
                     $stmt->store_result();
-                    $stmt->bind_result($iduser, $fname, $lname, $clave, $rol, $estado);
+                    $stmt->bind_result($iduser, $fname, $lname, $passdb, $status);
                     $stmt->fetch();
 
                     if ($stmt->num_rows == 1) {
                         if ($this->checkBrute($iduser)) {
-                            $this->header('', '?err=Ha hecho mas de 5 intentos de inicio de sesión en los últimos 30 minutos. Debe esperar una hora para ser habilitado de nuevo o intente recuperar su clave.');
+                            $err .= 'Ha hecho mas de ' . $this->maxLoginAttemps . ' intentos de inicio de sesión en los últimos 30 minutos. Debe esperar una hora para ser habilitado de nuevo o intente recuperar su contraseña.';
                             
                         } else {
-                            if (hash_equals($clave, $password)) {
-                                if($estado == 1) {
+                            if (hash_equals($passdb, $password)) {
+                                if($status == 1) {
                                     $user_browser = $_SERVER['HTTP_USER_AGENT'] . $this->userIp();
 
                                     $_SESSION['iduser'] = $iduser;
                                     $_SESSION['email'] = $email;
                                     $_SESSION['fname'] = $fname;
                                     $_SESSION['lname'] = $lname;
-                                    $_SESSION['rol'] = $rol;
-                                    $_SESSION['estado'] = $estado;
+                                    $_SESSION['status'] = $status;
                                     $_SESSION['stringlogin'] = hash('sha512', $password . $user_browser);
 
                                     $sql = 'INSERT INTO session(iduser, stringlogin) VALUES (' . $iduser . ', "' . $_SESSION['stringlogin'] . '")';
@@ -91,32 +92,33 @@ class main extends mysqliConn {
                                     $this->header('index.php', '?suc=Inicio de sesión correcto.');
             
                                 } else {
-                                    $this->header('', '?err=Su user ha sido desactivado. Contacte al administrador.');
+                                    $err .= 'Su usuario ha sido desactivado. Contacte al administrador.';
 
                                 }
 
                             } else {
                                 $this->mysqli->query('INSERT INTO trysession(iduser) VALUES ("' . $iduser . '")') or exit($this->mysqli->error);
-                                $this->header('', '?err=La clave no es correcta. Intente de nuevo.');
+                                $err .= 'La contraseña no es correcta. Intente de nuevo.';
+
                             }
                         }
                     } else {
-                        $this->header('', '?err=El correo electrónico no esta registrado.');
+                        $err .= 'El correo electrónico no esta registrado.';
 
                     }
                 } else {
-                    echo $this->mysqli->error;
-                    exit;
+                    $err .= $this->mysqli->error;
+
                 }
             } else {
-                $this->header('', '?err=El código de la imagen no es correcto. Intente de nuevo.');
+                $err .= 'El código de la imagen no es correcto. Intente de nuevo.';
                 
             }
         } else {
-            $this->header('', '?err=La validación del formulario no ha sido exitosa. Intente de nuevo.');
+            $err .= 'La validación del formulario no ha sido exitosa. Intente de nuevo.';
 
         }
-        $this->header('', '?err=Error desconocido');
+        $this->header('', '?err=' . $err);
         
     }
 
@@ -146,46 +148,48 @@ class main extends mysqliConn {
     }
 
     private function recoverPassword() {
+        $err = '¡Error!';
         if($this->checkToken) {
             $email = isset($this->post['email']) && filter_var($this->post['email'], FILTER_VALIDATE_EMAIL) ? $this->post['email'] : '';
             $codigo = isset($this->post['codigo']) ? hash('sha512', $this->post['codigo']) : 'null';
-            $password = sha1(isset($this->post['password']) ? $this->post['password'] : 'null');
-            $password2 = sha1(isset($this->post['password2']) ? $this->post['password2'] : 'null2');
+            $pass = sha1(isset($this->post['pass']) ? $this->post['pass'] : 'null');
+            $passver = sha1(isset($this->post['passver']) ? $this->post['passver'] : 'null2');
             
             if($email != '') {
-                if ($stmt = $this->mysqli->prepare('SELECT iduser, estado FROM user WHERE email = ? LIMIT 1')) {
+                if ($stmt = $this->mysqli->prepare('SELECT iduser, status FROM user WHERE email = ? LIMIT 1')) {
                     $stmt->bind_param('s', $email);
                     $stmt->execute();
                     $stmt->store_result();
-                    $stmt->bind_result($iduser, $estado);
+                    $stmt->bind_result($iduser, $status);
                     $stmt->fetch();
 
                     if ($stmt->num_rows == 1) {
-                        if($estado == 1) {
+                        if($status == 1) {
                             if($codigo != 'null') {
-                                if ($stmt = $this->mysqli->prepare('SELECT secret FROM recoverpassword WHERE iduser = ? LIMIT 1')) {
+                                if($stmt = $this->mysqli->prepare('SELECT secret FROM recoverpassword WHERE iduser = ? AND status = 1 ORDER BY time DESC')) {
                                     $stmt->bind_param('i', $iduser);
                                     $stmt->execute();
                                     $stmt->store_result();
                                     $stmt->bind_result($secret);
                                     $stmt->fetch();
-                                    
-                                    $sql = 'DELETE FROM recoverpassword WHERE iduser = ' . $iduser;
-                                    $this->mysqli->query($sql) or exit($this->mysqli->error);
 
                                     if(hash_equals($codigo, $secret)) {
-                                        if($password == $password2) {
-                                            $sql = 'UPDATE user SET clave = "' . $password . '" WHERE iduser = ' . $iduser;
+                                        if($pass == $passver) {
+                                            $sql = 'UPDATE user SET passdb = "' . $pass . '" WHERE iduser = ' . $iduser;
                                             $this->mysqli->query($sql) or exit($this->mysqli->error);
 
-                                            $this->header('login.php', '?suc=Ha cambiado su clave, inicie sesión.');
+                                            $sql = 'UPDATE recoverpassword SET status = 0 WHERE iduser = ' . $iduser;
+                                            $this->mysqli->query($sql) or exit($this->mysqli->error);
+
+                                            $suc = 'Ha cambiado su contraseña, inicie sesión.';
                                         }
-                                        $this->header('', '?err=Las contraseñas no coinciden, recupere su clave de nuevo.');
+                                        $err .= 'Las contraseñas no coinciden, recupere su contraseña de nuevo.';
 
                                     }
+                                } else {
+                                    $this->header('', '?err=' . html_entity_decode($this->mysqli->error));
+                                    
                                 }
-                                
-                                $this->header('', '?err=Código invalido, recupere su clave de nuevo.');
     
                             } else {
                                 $secret = mt_rand(100001, 999999);
@@ -194,62 +198,44 @@ class main extends mysqliConn {
                                 $sql = 'INSERT INTO recoverpassword(iduser, secret) VALUES (' . $iduser . ', "' . $hashsecret . '")';
                                 $this->mysqli->query($sql) or exit($this->mysqli->error);
                                 
-                                require 'PHPMailer/Exception.php';
-                                require 'PHPMailer/PHPMailer.php';
-                                require 'PHPMailer/SMTP.php';
-    
-                                $mail = new PHPMailer(true);
-    
-                                try {
-                                    $mail->isSMTP();                                            // Set mailer to use SMTP
-                                    $mail->Host       = 'mail.ascofame.org.co';                 // Specify main and backup SMTP servers
-                                    $mail->SMTPAuth   = true;                                   // Enable SMTP authentication
-                                    $mail->Username   = 'info@ascofame.org.co';                 // SMTP username
-                                    $mail->Password   = '*3202283620*';                         // SMTP password
-                                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;         // Enable TLS encryption, `PHPMailer::ENCRYPTION_SMTPS` also accepted
-                                    $mail->Port       = 465;                                    // TCP port to connect to
-                                    $mail->CharSet    = 'UTF-8';
-    
-                                    //Recipients
-                                    $mail->setFrom('info@ascofame.org.co');
-                                    $mail->addAddress($email);     // Add a recipient
-                                    $mail->addBCC('jgaleano@ascofame.org.co');
-    
-                                    // Content
-                                    $mail->isHTML(true);                                  // Set email format to HTML
-                                    $mail->Subject = 'Catalogo - Recuperar clave';
-                                    $mail->Body    = 'Ha solicitado recuperar su clave. Ingrese el código inferior en la pagina para continuar:<br /><br /><strong>'.$secret.'</strong><br /><br />Catalogo IETS';
-                                    $mail->AltBody = 'Ha solicitado recuperar su clave. Ingrese el código inferior en la pagina para continuar:'.$secret;
-    
-                                    $mail->send();
-                                    $this->header('', '?setPassword&suc=Se ha enviado un código de verificación a su correo, no cierre esta ventana.');
-    
-                                } catch (Exception $e) {
-                                    $this->header('', '?err=Error. Contacte el administrador.' . $mail->ErrorInfo);
-                                    
-                                }
-                            }
+                                $subject = $this->title . ' - Recuperar clave';
 
+                                $message = '<html><head><title>' . $subject . '</title></head><body><p>Ha solicitado recuperar su contraseña. Ingrese el código inferior en la pagina para continuar:<br /><br /><strong>'.$secret.'</strong><br /><br />' . $this->title . '</p></body></html>';
+                                $headers = "MIME-Version: 1.0" . "\r\n";
+                                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+                                $headers .= 'From: <' . $this->mail_email . '>' . "\r\n";
+                                $headers .= 'Cc: ' . $this->mail_email . "\r\n";
+
+                                sendemail($this, $email, 'Recuperar clave', $message, '', 'setPassword&suc=Verifique su correo e ingrese el codigo enviado');
+                                
+                            }
                         } else {
-                            $this->header('', '?err=Su user ha sido desactivado. Contacte al administrador.');
+                            $err .= 'Su usuario ha sido desactivado. Contacte al administrador.';
 
                         }
-                        
-                        return false;
+
                     } else {
-                        $this->header('', '?err=El correo electrónico no esta registrado. Intente de nuevo.');
+                        $err .= 'El correo electrónico no esta registrado. Intente de nuevo.';
                                      
                     }
                 } else {
-                    $this->header('', '?err=' . $this->mysqli->error);
+                    $err .= $this->mysqli->error;
                     
                 }
             }
         } else {
-            $this->header('', '?err=La validación del formulario no ha sido exitosa. Intente de nuevo.');
+            $err .= 'La validación del formulario no ha sido exitosa. Intente de nuevo.';
             
         }
-        $this->header('', '?err=Error desconocido');
+
+        $sql = 'UPDATE recoverpassword SET status = 0 WHERE iduser = ' . $iduser;
+        $this->mysqli->query($sql) or exit($this->mysqli->error);
+        
+        if(isset($suc)) {
+            $this->header('login.php', '?suc=' . $suc);
+            
+        }
+        $this->header('', '?err=' . $err);
 
     }
 
@@ -261,7 +247,7 @@ class main extends mysqliConn {
             $stmt->execute();
             $stmt->store_result();
 
-            if ($stmt->num_rows > 5) {
+            if ($stmt->num_rows > $this->maxLoginAttemps) {
                 return true;
             }
         }
@@ -269,28 +255,27 @@ class main extends mysqliConn {
     }
 
     private function loginCheck() {
-        if(isset($this->session['iduser'], $this->session['email'], $this->session['fname'], $this->session['lname'], $this->session['rol'], $this->session['estado'], $this->session['stringlogin'])) {
+        if(isset($this->session['iduser'], $this->session['email'], $this->session['fname'], $this->session['lname'], $this->session['status'], $this->session['stringlogin'])) {
             $this->iduser = $this->session['iduser'];
             $this->email = $this->session['email'];
             $this->fname = $this->session['fname'];
             $this->lname = $this->session['lname'];
-            $this->estado = $this->session['estado'];
-            $this->rol = $this->session['rol'];
+            $this->status = $this->session['status'];
             $this->stringlogin = $this->session['stringlogin'];
             
             $user_browser = $_SERVER['HTTP_USER_AGENT'] . $this->userIp();
 
-            if($stmt = $this->mysqli->prepare('SELECT user.clave, user.estado FROM user JOIN session ON user.iduser = session.iduser WHERE user.iduser = ? AND session.stringlogin = ? AND session.timeend IS NULL')) {
+            if($stmt = $this->mysqli->prepare('SELECT user.passdb, user.status FROM user JOIN session ON user.iduser = session.iduser WHERE user.iduser = ? AND session.stringlogin = ? AND session.timeend IS NULL')) {
                 $stmt->bind_param('is', $this->iduser, $this->stringlogin);
                 $stmt->execute();
                 $stmt->store_result();
                 
                 if ($stmt->num_rows > 0) {
-                    $stmt->bind_result($clave, $estado);
+                    $stmt->bind_result($passdb, $status);
                     $stmt->fetch();
-                    $login_check = hash('sha512', $clave . $user_browser);
+                    $login_check = hash('sha512', $passdb . $user_browser);
 
-                    if($estado == 1) {
+                    if($status == 1) {
                         if(hash_equals($login_check, $this->stringlogin)) {
                             return true;
                         }
@@ -298,8 +283,57 @@ class main extends mysqliConn {
                 }
             }
         }
-        unset($this->iduser, $this->email, $this->fname, $this->lname, $this->estado, $this->stringlogin);
+        unset($this->iduser, $this->email, $this->fname, $this->lname, $this->status, $this->stringlogin);
         return false;
+
+    }
+
+    private function register() {
+        $email = isset($this->post['email']) && filter_var($this->post['email'], FILTER_VALIDATE_EMAIL) ? $this->post['email'] : '';
+        $emailalt = isset($this->post['emailalt']) && filter_var($this->post['emailalt'], FILTER_VALIDATE_EMAIL) ? $this->post['emailalt'] : '';
+        $pass = SHA1(isset($this->post['pass']) ? $this->post['pass'] : 'null');
+        $passver = SHA1(isset($this->post['passver']) ? $this->post['passver'] : 'null2');
+        $fname = isset($this->post['fname']) ? $this->post['fname'] : '';
+        $lname = isset($this->post['lname']) ? $this->post['lname'] : '';
+        $type_id = isset($this->post['type_id']) ? $this->post['type_id'] : '';
+        $number_id = isset($this->post['number_id']) ? $this->post['number_id'] : '';
+        $institution = isset($this->post['institution']) ? $this->post['institution'] : '';
+        $position = isset($this->post['position']) ? $this->post['position'] : '';
+        
+        if($this->checkToken) {
+            if($this->checkCaptcha) {
+                if($email != '' || $emailalt != '' || $fname != '' || $lname != '' || $type_id != '' || $number_id != '' || $institution != '' || $position != '') {
+                    if($pass == $passver) {
+                        $stmt = $this->mysqli->prepare("INSERT INTO user(email, passdb, fname, lname, type_id, number_id) VALUES (?, ?, ?, ?, ?, ?)");
+                        $stmt->bind_param("ssssii", $email, $pass, $fname, $lname, $type_id, $number_id);
+                        $stmt->execute();
+                        $iduser = $stmt->insert_id;
+
+                        if($iduser > 0) {
+                            $stmt = $this->mysqli->prepare("INSERT INTO userinstitution(iduser, institution, position) VALUES (?, ?, ?)");
+                            $stmt->bind_param("iss", $iduser, $institution, $position);
+                            $stmt->execute();
+                        }
+
+                        $this->header('index.php', '?suc=Registro exitoso, el Administrador validara la información y hará la activación de su usuario.');
+
+                    } else {
+                        $this->header('', '?err=La contraseña no coincide. Intente de nuevo.');
+
+                    }
+                } else {
+                    $this->header('', '?err=Todos los campos son obligatorios. Intente de nuevo.');
+
+                }
+            } else {
+                $this->header('', '?err=El código de la imagen no es correcto. Intente de nuevo.');
+                
+            }
+        } else {
+            $this->header('', '?err=La validación del formulario no ha sido exitosa. Intente de nuevo.');
+
+        }
+        $this->header('', '?err=Error desconocido. Intente de nuevo.'); 
 
     }
     /* END - Login functions */
@@ -354,8 +388,37 @@ class main extends mysqliConn {
      
         return $ipaddress;
     }
+
+    private function checkCaptcha() {
+        $captcha = isset($this->post['captcha']) ? hash('sha512', $this->mysqli->real_escape_string($this->post['captcha'])) : '';
+
+        if(isset($_SESSION['captcha']) && hash_equals($_SESSION['captcha'], $captcha)) {
+            return true;
+        }
+        return false;
+    }
     /* END - Form functions */
 
+    public function getvalues($data) {
+        $return = array();
+
+        if($stmt = $this->mysqli->prepare('SELECT * FROM ' . $this->cleanvar($data))) {
+            $stmt->execute();
+            $stmt->store_result();
+            
+            if ($stmt->num_rows > 0) {
+                $stmt->bind_result($id, $text, $status);
+                while ($stmt->fetch()) {
+                    $return[$id] = array('value' => $text, 
+                                        'status' => $status);
+                }
+            }
+        } else {
+            $this->header('index.php', '?err=' . html_entity_decode($this->mysqli->error));
+
+        }
+        return $return;
+    }
 
     public function displayMsgs() {
         if(isset($this->get['err'])) {
@@ -374,8 +437,8 @@ class main extends mysqliConn {
             return $this->recoverPassword();
         } else if(isset($this->get['logoutHandler'])) {
             return $this->logoutHandler();
-        } else if(isset($this->get['evaluatorAuth'])) {
-            return $this->evaluatorAuth();
+        } else if(isset($this->get['register'])) {
+            return $this->register();
         }
         
     }

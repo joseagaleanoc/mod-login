@@ -9,6 +9,7 @@
             <a href="?logoutHandler"class="menu-item">Cerrar sesión</a>
         <?php } else { ?>
             <a href="login.php"class="menu-item">Iniciar sesión</a>
+            <a href="register.php"class="menu-item">Regístrese</a>
         <?php } ?>
     </div>
 </header>

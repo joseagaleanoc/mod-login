@@ -2,13 +2,18 @@
 
 class mysqliConn {
     private $mysqli;
+    public $mail_cc = 'admin@mail.com';
+    public $mail_email = 'info@mail.com';
+    public $mail_password = '';
+    public $mail_host = 'mail.mail.com';
+    public $mail_charset = 'UTF-8';
 
     protected function mysqliConn() {
         $_db['host'] = '';
         $_db['user'] = '';
         $_db['pass'] = '';
         $_db['db'] = '';
-        $_db['charset'] = 'utf8';
+        $_db['charset'] = '';
         
         $this->mysqli = new mysqli($_db['host'], $_db['user'], $_db['pass'], $_db['db']) or $this->log($mysqli->connect_error, true, 'ERROR');
         $this->mysqli->set_charset($_db['charset']);
