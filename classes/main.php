@@ -289,6 +289,7 @@ class main extends mysqliConn {
     }
 
     private function register() {
+        $err = '¡Error!';
         $email = isset($this->post['email']) && filter_var($this->post['email'], FILTER_VALIDATE_EMAIL) ? $this->post['email'] : '';
         $emailalt = isset($this->post['emailalt']) && filter_var($this->post['emailalt'], FILTER_VALIDATE_EMAIL) ? $this->post['emailalt'] : '';
         $pass = SHA1(isset($this->post['pass']) ? $this->post['pass'] : 'null');
@@ -303,37 +304,50 @@ class main extends mysqliConn {
         if($this->checkToken) {
             if($this->checkCaptcha) {
                 if($email != '' || $emailalt != '' || $fname != '' || $lname != '' || $type_id != '' || $number_id != '' || $institution != '' || $position != '') {
-                    if($pass == $passver) {
-                        $stmt = $this->mysqli->prepare("INSERT INTO user(email, passdb, fname, lname, type_id, number_id) VALUES (?, ?, ?, ?, ?, ?)");
-                        $stmt->bind_param("ssssii", $email, $pass, $fname, $lname, $type_id, $number_id);
+                    if ($stmt = $this->mysqli->prepare('SELECT email FROM user WHERE email = ?')) {
+                        $stmt->bind_param('s', $email);
                         $stmt->execute();
-                        $iduser = $stmt->insert_id;
+                        $stmt->store_result();
+    
+                        if ($stmt->num_rows == 0) {
+                            if($pass == $passver) {
+                                if($stmt = $this->mysqli->prepare("INSERT INTO user(email, emailalt, passdb, fname, lname, type_id, number_id) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                                    $stmt->bind_param("sssssii", $email, $emailalt, $pass, $fname, $lname, $type_id, $number_id);
+                                    $stmt->execute();
+                                    $iduser = $stmt->insert_id;
+        
+                                    if($iduser > 0) {
+                                        $stmt = $this->mysqli->prepare("INSERT INTO userinstitution(iduser, institution, position) VALUES (?, ?, ?)");
+                                        $stmt->bind_param("iss", $iduser, $institution, $position);
+                                        $stmt->execute();
+                                    }
+        
+                                    $this->header('index.php', '?suc=Registro exitoso, el Administrador validara la información y hará la activación de su usuario.');
+                                }
+    
+                            } else {
+                                $err .= 'La contraseña no coincide. Intente de nuevo.';
+    
+                            }
+                        } else {
+                            $err .= 'El correo electrónico ya se encuentra registrado.';
 
-                        if($iduser > 0) {
-                            $stmt = $this->mysqli->prepare("INSERT INTO userinstitution(iduser, institution, position) VALUES (?, ?, ?)");
-                            $stmt->bind_param("iss", $iduser, $institution, $position);
-                            $stmt->execute();
                         }
-
-                        $this->header('index.php', '?suc=Registro exitoso, el Administrador validara la información y hará la activación de su usuario.');
-
-                    } else {
-                        $this->header('', '?err=La contraseña no coincide. Intente de nuevo.');
-
                     }
+                        
                 } else {
-                    $this->header('', '?err=Todos los campos son obligatorios. Intente de nuevo.');
+                    $err .= 'Todos los campos son obligatorios. Intente de nuevo.';
 
                 }
             } else {
-                $this->header('', '?err=El código de la imagen no es correcto. Intente de nuevo.');
+                $err .= 'El código de la imagen no es correcto. Intente de nuevo.';
                 
             }
         } else {
-            $this->header('', '?err=La validación del formulario no ha sido exitosa. Intente de nuevo.');
+            $err .= 'La validación del formulario no ha sido exitosa. Intente de nuevo.';
 
         }
-        $this->header('', '?err=Error desconocido. Intente de nuevo.'); 
+        $this->header('', '?err=' . $err); 
 
     }
     /* END - Login functions */
